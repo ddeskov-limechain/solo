@@ -368,7 +368,7 @@ export class MirrorNodeCommand extends BaseCommand {
       this.logger.info(
         'Mirror node will remain configured to pull from consensus node because DISABLE_IMPORTER_SPRING_PROFILES=true',
       );
-      return '';
+      return new HelmChartValues();
     }
 
     const clusterSchemas: ReadonlyArray<Readonly<ClusterSchema>> = configuration.clusters;

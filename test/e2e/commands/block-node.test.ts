@@ -33,6 +33,7 @@ const endToEndTestSuite: EndToEndTestSuite = new EndToEndTestSuiteBuilder()
   .withClusterCount(1)
   .withConsensusNodesCount(2)
   .withLoadBalancerEnabled(false)
+  .withWrapsEnabled(true)
   .withPinger(false)
   .withRealm(0)
   .withShard(0)
@@ -88,6 +89,13 @@ const endToEndTestSuite: EndToEndTestSuite = new EndToEndTestSuiteBuilder()
         MirrorNodeTest.add(options);
 
         BlockNodeTest.testBlockNode(options, 1);
+
+        // Verify WRAPs/TSS is operational: deploy a mirror node (with pinger enabled so the network
+        // keeps receiving transactions) and confirm TSS-signed blocks keep being produced by the
+        // network and ingested by the mirror node. This is a single-cluster suite, so the mirror
+        // node deploys to cluster reference index 0.
+        MirrorNodeTest.add({...options, pinger: true}, 0);
+        MirrorNodeTest.verifyBlocksAreBeingProduced(options);
 
         BlockNodeTest.add(options, ['node2']);
         DeploymentTest.info(options);

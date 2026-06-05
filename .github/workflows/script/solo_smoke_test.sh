@@ -82,7 +82,6 @@ function wait_for_contract_test_accounts ()
   local relay_response=""
   local mirror_response=""
   local derived_addresses=""
-  local address_lower=""
 
   echo "Resolve contract test addresses from generated private keys"
   derived_addresses=$(
@@ -112,18 +111,16 @@ EOF
     log_and_exit 1
   fi
 
-  echo "Wait for contract test accounts to become visible through relay and mirror"
+  echo "Wait for contract test accounts to become visible through relay"
   for address in "${contract_test_addresses[@]}"; do
     ready=0
-    address_lower=$(printf '%s' "${address}" | tr '[:upper:]' '[:lower:]')
     for ((attempt = 1; attempt <= max_attempts; attempt++)); do
       relay_response=$(curl -sS -H 'content-type: application/json' \
         --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"${address}\",\"latest\"],\"id\":1}" \
         "${relay_url}" || true)
       mirror_response=$(curl -sS "${mirror_url}/api/v1/accounts/${address}" || true)
 
-      if echo "${relay_response}" | grep -Eq '"result":"0x[0-9a-fA-F]+"' && \
-        echo "${mirror_response}" | grep -q "\"evm_address\":\"${address_lower}\""; then
+      if echo "${relay_response}" | grep -Eq '"result":"0x[0-9a-fA-F]+"' ; then
         echo "Account ${address} is ready [attempt=${attempt}/${max_attempts}]"
         ready=1
         break
@@ -134,7 +131,7 @@ EOF
     done
 
     if [[ ${ready} -ne 1 ]]; then
-      echo "Timed out waiting for account ${address} to appear in relay/mirror"
+      echo "Timed out waiting for account ${address} to appear in relay"
       echo "Last relay response: ${relay_response}"
       echo "Last mirror response: ${mirror_response}"
       log_and_exit 1

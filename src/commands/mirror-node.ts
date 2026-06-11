@@ -769,6 +769,7 @@ export class MirrorNodeCommand extends BaseCommand {
               }
 
               this.sharedResourceManager.enableRedis();
+              this.sharedResourceManager.setSchedulingChartValues(context_.config.chartValues);
               context_.config.installSharedResources = await this.sharedResourceManager.installChart(
                 context_.config.namespace,
                 context_.config.chartDirectory,

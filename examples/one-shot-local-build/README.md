@@ -59,7 +59,7 @@ task
 
 This will:
 
-1. Clone all component repositories next to the `solo` directory (e.g., `../hiero-consensus-node`)
+1. Clone all component repositories into version-scoped directories next to the `solo` directory
 2. Run `helm dependency build` for each local chart directory
 3. Build the consensus node from source with Gradle
 4. Generate a runtime values YAML with actual local paths
@@ -89,18 +89,16 @@ task deploy
 
 ### Using Your Own Pre-Cloned Repositories
 
-If you already have the repositories checked out locally, the Taskfile will skip the clone step.
-The default expected locations (relative to the `solo` project parent directory) are:
+The Taskfile uses version-scoped checkout directories so it does not modify active sibling clones
+you may already have on development branches. The default locations are under:
 
 ```
-../hiero-consensus-node    — consensus node repo
-../hiero-block-node        — block node repo
-../hiero-mirror-node       — mirror node repo
-../hiero-json-rpc-relay    — relay repo
-../hiero-mirror-node-explorer — explorer repo
+../solo-one-shot-local-build-repos/
 ```
 
-You can override these by editing the `vars:` section in `Taskfile.yml`.
+If you want to use your own pre-cloned repositories, edit the `*_REPO_DIR` variables in
+`Taskfile.yml`. The validation step requires those repositories to be checked out at the
+versions defined in `version.ts`.
 
 ### Manual Values File
 

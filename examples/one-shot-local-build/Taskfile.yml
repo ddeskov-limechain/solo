@@ -29,12 +29,14 @@ vars:
   BLOCK_NODE_VERSION:
     sh: awk -F"'" '/^export const BLOCK_NODE_VERSION/ {print $(NF-1); exit}' ../../version.ts
 
-  # Local repository directories (cloned next to the solo repo)
-  CN_REPO_DIR: "{{.ROOT_DIR}}/../hiero-consensus-node"
-  BLOCK_NODE_REPO_DIR: "{{.ROOT_DIR}}/../hiero-block-node"
-  MIRROR_NODE_REPO_DIR: "{{.ROOT_DIR}}/../hiero-mirror-node"
-  RELAY_REPO_DIR: "{{.ROOT_DIR}}/../hiero-json-rpc-relay"
-  EXPLORER_REPO_DIR: "{{.ROOT_DIR}}/../hiero-mirror-node-explorer"
+  # Local repository directories. Use version-scoped paths so this example does not mutate
+  # active sibling clones that developers may already have checked out on other branches.
+  CHECKOUT_ROOT_DIR: "{{.ROOT_DIR}}/../solo-one-shot-local-build-repos"
+  CN_REPO_DIR: "{{.CHECKOUT_ROOT_DIR}}/hiero-consensus-node-{{.CN_VERSION}}"
+  BLOCK_NODE_REPO_DIR: "{{.CHECKOUT_ROOT_DIR}}/hiero-block-node-v{{.BLOCK_NODE_VERSION}}"
+  MIRROR_NODE_REPO_DIR: "{{.CHECKOUT_ROOT_DIR}}/hiero-mirror-node-{{.MIRROR_NODE_VERSION}}"
+  RELAY_REPO_DIR: "{{.CHECKOUT_ROOT_DIR}}/hiero-json-rpc-relay-v{{.RELAY_VERSION}}"
+  EXPLORER_REPO_DIR: "{{.CHECKOUT_ROOT_DIR}}/hiero-mirror-node-explorer-v{{.EXPLORER_VERSION}}"
 
   # Local build and chart paths derived from the cloned repos
   CN_LOCAL_BUILD_PATH: "{{.CN_REPO_DIR}}/hedera-node/data"
@@ -97,75 +99,129 @@ tasks:
             echo "Skipping clone: {{.EXPLORER_REPO_DIR}} already exists"
           fi
 
+  validate-repos:
+    desc: Validate all component repositories are checked out at the versions defined in version.ts
+    cmds:
+      - cmd: |
+          FAILED=0
+
+          validate_repo() {
+            COMPONENT="$1"
+            REPO_DIR="$2"
+            EXPECTED_REF="$3"
+
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              echo "ERROR: $COMPONENT repository not found at $REPO_DIR"
+              echo "Run 'task checkout-repos' to clone missing component repositories."
+              FAILED=1
+              return
+            fi
+
+            if ! git -C "$REPO_DIR" rev-parse --verify --quiet "$EXPECTED_REF^{commit}" >/dev/null; then
+              git -C "$REPO_DIR" fetch --depth 1 origin "refs/tags/$EXPECTED_REF:refs/tags/$EXPECTED_REF"
+            fi
+
+            EXPECTED_SHA="$(git -C "$REPO_DIR" rev-parse "$EXPECTED_REF^{commit}")"
+            ACTUAL_SHA="$(git -C "$REPO_DIR" rev-parse HEAD)"
+            ACTUAL_REF="$(git -C "$REPO_DIR" describe --tags --always --dirty)"
+
+            if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+              echo "ERROR: $COMPONENT repository at $REPO_DIR is checked out at $ACTUAL_REF, expected $EXPECTED_REF."
+              FAILED=1
+              return
+            fi
+
+            if ! git -C "$REPO_DIR" diff --quiet || ! git -C "$REPO_DIR" diff --cached --quiet; then
+              echo "ERROR: $COMPONENT repository at $REPO_DIR has modified tracked files."
+              FAILED=1
+              return
+            fi
+
+            echo "$COMPONENT repository is at $EXPECTED_REF"
+          }
+
+          validate_repo "consensus node" "{{.CN_REPO_DIR}}" "{{.CN_VERSION}}"
+          validate_repo "block node" "{{.BLOCK_NODE_REPO_DIR}}" "v{{.BLOCK_NODE_VERSION}}"
+          validate_repo "mirror node" "{{.MIRROR_NODE_REPO_DIR}}" "{{.MIRROR_NODE_VERSION}}"
+          validate_repo "JSON-RPC relay" "{{.RELAY_REPO_DIR}}" "v{{.RELAY_VERSION}}"
+          validate_repo "mirror node explorer" "{{.EXPLORER_REPO_DIR}}" "v{{.EXPLORER_VERSION}}"
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "The local build example deploys charts and artifacts from existing sibling repositories."
+            echo "Move/remove mismatched repositories or check them out to the expected refs before rerunning this task."
+            exit 1
+          fi
+
   build-chart-deps:
     desc: Run helm dependency build for all local chart directories
+    deps:
+      - validate-repos
+    cmds:
+      # Block node chart: <charts>/block-node-server
+      - task: build-chart-dep
+        vars:
+          CHART_PATH: "{{.BLOCK_NODE_CHART_DIR}}/block-node-server"
+          CACHE_KEY: "block-node-server"
+          CHART_NAME: "block-node-server"
+
+      # Mirror node chart: <charts>/hedera-mirror
+      - task: build-chart-dep
+        vars:
+          CHART_PATH: "{{.MIRROR_NODE_CHART_DIR}}/hedera-mirror"
+          CACHE_KEY: "hedera-mirror"
+          CHART_NAME: "hedera-mirror"
+
+      # Relay chart: <charts>/hedera-json-rpc
+      - task: build-chart-dep
+        vars:
+          CHART_PATH: "{{.RELAY_CHART_DIR}}/hedera-json-rpc"
+          CACHE_KEY: "hedera-json-rpc"
+          CHART_NAME: "hedera-json-rpc"
+
+      # Explorer chart: <charts> (directory used directly, no chart name suffix)
+      - task: build-chart-dep
+        vars:
+          CHART_PATH: "{{.EXPLORER_CHART_DIR}}"
+          CACHE_KEY: "hiero-mirror-node-explorer"
+          CHART_NAME: "hiero-mirror-node-explorer"
+
+  build-chart-dep:
+    internal: true
+    desc: Run helm dependency build for one local chart directory
     vars:
       # Stable cache directory: chart tarballs are saved here and restored on the next run.
       # In CI the workflow caches this path with actions/cache, keyed by version.ts hash,
       # so Docker Hub OCI pulls (registry-1.docker.io/bitnamicharts) are skipped entirely
       # after the first successful build — avoiding Docker Hub anonymous rate-limit 429s.
-      # helm dependency build skips re-downloading when charts/*.tgz already exist and
-      # match Chart.lock, so pre-populating from the cache is sufficient.
       HELM_CHART_CACHE: "${HOME}/.solo/helm-chart-cache"
     cmds:
-      # Block node chart: <charts>/block-node-server
       - cmd: |
-          CHART_PATH="{{.BLOCK_NODE_CHART_DIR}}/block-node-server"
-          CACHE_DIR="{{.HELM_CHART_CACHE}}/block-node-server"
-          if [ -d "$CHART_PATH" ]; then
-            if [ -d "$CACHE_DIR" ] && ls "$CACHE_DIR"/*.tgz >/dev/null 2>&1; then
-              echo "Restoring cached helm tarballs for block-node-server..."
-              mkdir -p "$CHART_PATH/charts"
-              cp "$CACHE_DIR"/*.tgz "$CHART_PATH/charts/"
-            fi
-            echo "Running helm dependency build in $CHART_PATH..."
-            helm dependency build "$CHART_PATH"
-            mkdir -p "$CACHE_DIR" && cp "$CHART_PATH/charts"/*.tgz "$CACHE_DIR/" 2>/dev/null || true
-          else
-            echo "Skipping: $CHART_PATH not found"
-          fi
+          CHART_PATH="{{.CHART_PATH}}"
+          CACHE_DIR="{{.HELM_CHART_CACHE}}/{{.CACHE_KEY}}"
 
-      # Mirror node chart: <charts>/hedera-mirror
-      - cmd: |
-          CHART_PATH="{{.MIRROR_NODE_CHART_DIR}}/hedera-mirror"
-          CACHE_DIR="{{.HELM_CHART_CACHE}}/hedera-mirror"
-          if [ -d "$CHART_PATH" ]; then
-            if [ -d "$CACHE_DIR" ] && ls "$CACHE_DIR"/*.tgz >/dev/null 2>&1; then
-              echo "Restoring cached helm tarballs for hedera-mirror..."
-              mkdir -p "$CHART_PATH/charts"
-              cp "$CACHE_DIR"/*.tgz "$CHART_PATH/charts/"
+          remove_untracked_path() {
+            local path="$1"
+            local rel_path="$2"
+            if [ ! -e "$path" ]; then
+              return
             fi
-            echo "Running helm dependency build in $CHART_PATH..."
-            helm dependency build "$CHART_PATH"
-            mkdir -p "$CACHE_DIR" && cp "$CHART_PATH/charts"/*.tgz "$CACHE_DIR/" 2>/dev/null || true
-          else
-            echo "Skipping: $CHART_PATH not found"
-          fi
 
-      # Relay chart: <charts>/hedera-json-rpc
-      - cmd: |
-          CHART_PATH="{{.RELAY_CHART_DIR}}/hedera-json-rpc"
-          CACHE_DIR="{{.HELM_CHART_CACHE}}/hedera-json-rpc"
-          if [ -d "$CHART_PATH" ]; then
-            if [ -d "$CACHE_DIR" ] && ls "$CACHE_DIR"/*.tgz >/dev/null 2>&1; then
-              echo "Restoring cached helm tarballs for hedera-json-rpc..."
-              mkdir -p "$CHART_PATH/charts"
-              cp "$CACHE_DIR"/*.tgz "$CHART_PATH/charts/"
+            if git -C "$CHART_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+              [ -n "$(git -C "$CHART_PATH" ls-files -- "$rel_path")" ]; then
+              echo "Keeping tracked $rel_path in $CHART_PATH"
+              return
             fi
-            echo "Running helm dependency build in $CHART_PATH..."
-            helm dependency build "$CHART_PATH"
-            mkdir -p "$CACHE_DIR" && cp "$CHART_PATH/charts"/*.tgz "$CACHE_DIR/" 2>/dev/null || true
-          else
-            echo "Skipping: $CHART_PATH not found"
-          fi
 
-      # Explorer chart: <charts> (directory used directly, no chart name suffix)
-      - cmd: |
-          CHART_PATH="{{.EXPLORER_CHART_DIR}}"
-          CACHE_DIR="{{.HELM_CHART_CACHE}}/hiero-mirror-node-explorer"
+            echo "Removing generated $rel_path from $CHART_PATH"
+            rm -rf "$path"
+          }
+
           if [ -d "$CHART_PATH" ]; then
+            remove_untracked_path "$CHART_PATH/Chart.lock" "Chart.lock"
+            remove_untracked_path "$CHART_PATH/charts" "charts"
+
             if [ -d "$CACHE_DIR" ] && ls "$CACHE_DIR"/*.tgz >/dev/null 2>&1; then
-              echo "Restoring cached helm tarballs for hiero-mirror-node-explorer..."
+              echo "Restoring cached helm tarballs for {{.CHART_NAME}}..."
               mkdir -p "$CHART_PATH/charts"
               cp "$CACHE_DIR"/*.tgz "$CHART_PATH/charts/"
             fi

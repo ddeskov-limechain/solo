@@ -13,7 +13,7 @@ import {SemanticVersion} from './src/business/utils/semantic-version.js';
  */
 
 // Dependencies
-export const HELM_VERSION: string = 'v3.14.2';
+export const HELM_VERSION: string = 'v4.2.1';
 export const KIND_VERSION: string = 'v0.29.0';
 export const PODMAN_VERSION: string = 'v5.6.0';
 export const VFKIT_VERSION: string = 'v0.6.1';

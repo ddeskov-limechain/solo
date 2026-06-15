@@ -16,6 +16,7 @@ vars:
 
   CLUSTER_NAME: "one-shot-local-build-cluster"
   CONTEXT: "kind-one-shot-local-build-cluster"
+  KIND_NODE_IMAGE: "kindest/node:v1.31.9@sha256:b94a3a6c06198d17f59cca8c6f486236fa05e2fb359cbd75dabbfc348a10b211"
 
   # Component versions - prefer env vars (set by CI), fall back to version.ts
   CN_VERSION:
@@ -299,9 +300,9 @@ tasks:
       - cmd: |
           SHARED_KIND_CONFIG="{{ .TASKFILE_DIR }}/../../resources/kind-config.yaml"
           if [ -f "${SHARED_KIND_CONFIG}" ]; then
-            kind create cluster -n {{ .CLUSTER_NAME }} --config "${SHARED_KIND_CONFIG}"
+            kind create cluster -n {{ .CLUSTER_NAME }} --image "{{ .KIND_NODE_IMAGE }}" --config "${SHARED_KIND_CONFIG}"
           else
-            kind create cluster -n {{ .CLUSTER_NAME }}
+            kind create cluster -n {{ .CLUSTER_NAME }} --image "{{ .KIND_NODE_IMAGE }}"
           fi
 
       # Wait for the control plane to come up

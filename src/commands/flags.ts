@@ -1330,7 +1330,7 @@ export class Flags {
     definition: {
       describe: 'Enable hinTS/TSS (CN >= v0.74).',
       type: 'boolean',
-      defaultValue: true,
+      defaultValue: false,
     },
     prompt: undefined,
   };

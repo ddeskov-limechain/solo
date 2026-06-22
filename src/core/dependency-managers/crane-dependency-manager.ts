@@ -15,6 +15,7 @@ import {SoloError} from '../errors/solo-error.js';
 import {SoloErrors} from '../errors/solo-errors.js';
 import {GitHubRelease, GitHubReleaseAsset, ReleaseInfo} from '../../types/index.js';
 import {OperatingSystem} from '../../business/utils/operating-system.js';
+import {GitHubApiClient} from '../github-api-client.js';
 
 const CRANE_RELEASES_LIST_URL: string = 'https://api.github.com/repos/google/go-containerregistry/releases';
 
@@ -116,18 +117,7 @@ export class CraneDependencyManager extends BaseDependencyManager {
 
   private async fetchReleaseInfo(tagName: string): Promise<ReleaseInfo> {
     try {
-      const response: Response = await fetch(CRANE_RELEASES_LIST_URL, {
-        method: 'GET',
-        headers: {
-          'User-Agent': constants.SOLO_USER_AGENT_HEADER,
-          Accept: 'application/vnd.github.v3+json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new SoloErrors.system.githubApiHttpResponseError(CRANE_RELEASES_LIST_URL, response.status);
-      }
-
+      const response: Response = await GitHubApiClient.get(CRANE_RELEASES_LIST_URL);
       const releases: GitHubRelease[] = await response.json();
       if (!releases || releases.length === 0) {
         throw new SoloErrors.system.gitHubReleasesNotFound();

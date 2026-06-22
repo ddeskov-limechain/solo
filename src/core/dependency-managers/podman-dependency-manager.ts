@@ -10,6 +10,7 @@ import {PackageDownloader} from '../package-downloader.js';
 import util from 'node:util';
 import {SoloError} from '../errors/solo-error.js';
 import {SoloErrors} from '../errors/solo-errors.js';
+import {GitHubApiClient} from '../github-api-client.js';
 import fs from 'node:fs';
 import {Zippy} from '../zippy.js';
 import {GitHubRelease, ReleaseInfo, PodmanMode} from '../../types/index.js';
@@ -90,20 +91,7 @@ export class PodmanDependencyManager extends BaseDependencyManager {
    */
   private async fetchReleaseInfo(tagName: string): Promise<ReleaseInfo> {
     try {
-      // Make a GET request to GitHub API using fetch
-      const response = await fetch(PODMAN_RELEASES_LIST_URL, {
-        method: 'GET', // Changed from HEAD to GET to retrieve the body
-        headers: {
-          'User-Agent': constants.SOLO_USER_AGENT_HEADER,
-          Accept: 'application/vnd.github.v3+json', // Explicitly request GitHub API v3 format
-        },
-      });
-
-      if (!response.ok) {
-        throw new SoloErrors.system.githubApiHttpResponseError(PODMAN_RELEASES_LIST_URL, response.status);
-      }
-
-      // Parse the JSON response
+      const response: Response = await GitHubApiClient.get(PODMAN_RELEASES_LIST_URL);
       const releases: GitHubRelease[] = await response.json();
 
       if (!releases || releases.length === 0) {

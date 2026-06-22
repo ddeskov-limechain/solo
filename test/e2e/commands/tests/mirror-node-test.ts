@@ -37,6 +37,7 @@ import {MIRROR_NODE_PORT} from '../../../../src/core/constants.js';
 import {PortUtilities} from '../../../../src/business/utils/port-utilities.js';
 
 export class MirrorNodeTest extends BaseCommandTest {
+  private static _clusterReferenceIndex: number;
   private static soloMirrorNodeDeployArgv(
     testName: string,
     deployment: DeploymentName,
@@ -309,6 +310,7 @@ export class MirrorNodeTest extends BaseCommandTest {
   }
 
   public static add(options: BaseTestOptions, clusterReferenceIndex: number = 1): void {
+    MirrorNodeTest._clusterReferenceIndex = clusterReferenceIndex;
     const {
       testName,
       testLogger,
